@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CycloneWatch Family View</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, Arial, sans-serif; background: #f3f4f6; color: #111827; }
+  header { background: #111827; color: #fff; padding: 14px 16px; }
+  header h1 { margin: 0; font-size: 18px; }
+  .wrap { max-width: 560px; margin: 0 auto; padding: 16px; }
+  .card { background: #fff; border: 1px solid #d1d5db; border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+  label { display: block; font-size: 13px; font-weight: 600; margin: 10px 0 4px; }
+  input { width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 15px; }
+  button { margin-top: 14px; width: 100%; padding: 12px; border: none; border-radius: 8px; background: #111827; color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; }
+  .banner { border-radius: 12px; padding: 16px; color: #fff; }
+  .banner h2 { margin: 0 0 6px; font-size: 20px; }
+  .banner p { margin: 0; font-size: 14px; }
+  .NEEDS_HELP { background: #dc2626; } .RESCUED { background: #15803d; }
+  .SAFE { background: #15803d; } .NO_UPDATE { background: #6b7280; }
+  .row { font-size: 14px; margin: 8px 0; color: #374151; }
+  .row b { color: #111827; }
+  #map { height: 280px; border-radius: 8px; margin-top: 10px; }
+  .error { color: #991b1b; background: #fee2e2; border-radius: 8px; padding: 12px; font-size: 14px; }
+  a { color: #1d4ed8; font-weight: 600; }
+  .hidden { display: none; }
+  .small { font-size: 12px; color: #6b7280; margin-top: 6px; }
+</style>
+</head>
+<body>
+<header><h1>CycloneWatch &middot; Family View</h1></header>
+<div class="wrap">
+  <div class="card">
+    <label for="person">Person's ID (for example USER001)</label>
+    <input id="person" autocomplete="off">
+    <label for="phone">Your phone number (must be listed as their emergency contact)</label>
+    <input id="phone" inputmode="tel" autocomplete="off">
+    <button id="go">Check status</button>
+  </div>
+
+  <div id="error" class="error hidden"></div>
+
+  <div id="result" class="hidden">
+    <div id="banner" class="banner"><h2 id="headline"></h2><p id="detail"></p></div>
+    <div class="card" style="margin-top:14px">
+      <div class="row"><b>SOS:</b> <span id="sos"></span></div>
+      <div class="row"><b>Rescue team:</b> <span id="rescue"></span></div>
+      <div class="row"><b>Last check-in:</b> <span id="checkin"></span></div>
+      <div class="row"><b>Last known location:</b> <span id="loc"></span> <a id="maplink" target="_blank" rel="noopener">Open in Google Maps</a></div>
+      <div id="map"></div>
+      <div class="small" id="updated"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let map = null, marker = null, timer = null;
+
+const p = new URLSearchParams(location.search);
+if (p.get("user")) $("person").value = p.get("user");
+if (p.get("phone")) $("phone").value = p.get("phone");
+
+function fmt(t) { return t ? t.replace("T", " ").slice(0, 16) : "unknown time"; }
+
+function showError(msg) {
+  $("result").classList.add("hidden");
+  $("error").textContent = msg;
+  $("error").classList.remove("hidden");
+}
+
+async function check() {
+  const person = $("person").value.trim();
+  const phone = $("phone").value.trim();
+  if (!person || !phone) { showError("Please enter both the person's ID and your phone number."); return; }
+  try {
+    const res = await fetch("/family/" + encodeURIComponent(person) +
+      "/status?phone=" + encodeURIComponent(phone));
+    if (res.status === 403) { showError("No access. Your phone number is not listed as an emergency contact for this person."); return; }
+    if (!res.ok) throw new Error(res.status);
+    render(await res.json());
+    if (!timer) timer = setInterval(check, 10000);   // refresh every 10 seconds
+  } catch (e) {
+    showError("Cannot reach the server.");
+  }
+}
+
+function render(d) {
+  $("error").classList.add("hidden");
+  $("result").classList.remove("hidden");
+  $("banner").className = "banner " + d.overall;
+  $("headline").textContent = d.headline;
+  $("detail").textContent = d.detail;
+  $("sos").textContent = d.sos ? d.sos.sos_id + " (" + d.sos.status + ")" : "none";
+  if (d.rescue) {
+    const mins = Math.max(0, Math.round((Date.parse(d.rescue.eta_at) - Date.now()) / 60000));
+    $("rescue").textContent = d.rescue.team_name + " — " +
+      (mins === 0 ? "arriving now" : "arriving in about " + mins + " min");
+  } else {
+    $("rescue").textContent = "not assigned yet";
+  }
+  $("checkin").textContent = d.last_check_in
+    ? d.last_check_in.response + " at " + fmt(d.last_check_in.time) : "none";
+  $("updated").textContent = "Updated " + new Date().toLocaleTimeString();
+
+  if (d.location) {
+    const ll = [d.location.latitude, d.location.longitude];
+    $("loc").textContent = ll[0].toFixed(4) + ", " + ll[1].toFixed(4) +
+      " (from " + (d.location.source === "sos" ? "SOS" : "check-in") + ", " + fmt(d.location.time) + ")";
+    $("maplink").href = d.map_link;
+    $("maplink").classList.remove("hidden");
+    $("map").classList.remove("hidden");
+    if (!map) {
+      map = L.map("map").setView(ll, 12);
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 18, attribution: "&copy; OpenStreetMap contributors"
+      }).addTo(map);
+    }
+    if (marker) map.removeLayer(marker);
+    marker = L.marker(ll).addTo(map);
+    map.setView(ll);
+    setTimeout(() => map.invalidateSize(), 50);
+  } else {
+    $("loc").textContent = "not available yet";
+    $("maplink").classList.add("hidden");
+    $("map").classList.add("hidden");
+  }
+}
+
+$("go").onclick = () => { if (timer) { clearInterval(timer); timer = null; } check(); };
+if (p.get("user") && p.get("phone")) check();
+</script>
+</body>
+</html>

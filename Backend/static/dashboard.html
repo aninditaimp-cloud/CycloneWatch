@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CycloneWatch Rescuer Dashboard</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root {
+    --pending: #dc2626; --ack: #d97706; --disp: #2563eb; --resc: #15803d; --canc: #6b7280;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, Arial, sans-serif; background: #f3f4f6; color: #111827; }
+  header { background: #111827; color: #fff; padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+  header h1 { margin: 0; font-size: 18px; }
+  .counts { display: flex; gap: 8px; flex-wrap: wrap; }
+  .count { padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; color: #fff; }
+  main { display: flex; height: calc(100vh - 56px); }
+  #list { width: 380px; max-width: 45%; overflow-y: auto; padding: 12px; }
+  #map { flex: 1; }
+  .filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .filters button { border: 1px solid #d1d5db; background: #fff; padding: 4px 10px; border-radius: 999px; cursor: pointer; font-size: 12px; }
+  .filters button.active { background: #111827; color: #fff; border-color: #111827; }
+  .card { background: #fff; border: 1px solid #d1d5db; border-left-width: 6px; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; cursor: pointer; }
+  .card h3 { margin: 0 0 4px; font-size: 15px; display: flex; justify-content: space-between; }
+  .badge { font-size: 11px; font-weight: 700; color: #fff; padding: 2px 8px; border-radius: 999px; }
+  .meta { font-size: 12px; color: #4b5563; line-height: 1.5; }
+  .actions { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
+  .actions button { border: none; border-radius: 6px; padding: 5px 9px; font-size: 12px; font-weight: 600; color: #fff; cursor: pointer; }
+  .prio { margin-top: 6px; font-size: 12px; font-weight: 600; line-height: 1.4; }
+  .assign { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .assign .meta { flex-basis: 100%; }
+  .assign select, .assign input { padding: 4px 6px; font-size: 12px; border: 1px solid #d1d5db; border-radius: 6px; }
+  .assign input { width: 64px; }
+  .assign button { border: none; border-radius: 6px; padding: 5px 9px; font-size: 12px; font-weight: 600; color: #fff; background: #2563eb; cursor: pointer; }
+  #status { font-size: 12px; color: #d1d5db; }
+  .empty { color: #6b7280; text-align: center; margin-top: 30px; }
+  @media (max-width: 800px) { main { flex-direction: column; } #list { width: 100%; max-width: 100%; height: 45%; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>CycloneWatch &middot; Rescuer Dashboard</h1>
+  <div class="counts" id="counts"></div>
+  <div id="status">Loading...</div>
+</header>
+<main>
+  <div id="list">
+    <div class="filters" id="filters"></div>
+    <div id="cards"></div>
+  </div>
+  <div id="map"></div>
+</main>
+
+<script>
+const STATUSES = ["Pending", "Acknowledged", "Dispatched", "Rescued", "Cancelled"];
+const COLORS = {
+  Pending: "#dc2626", Acknowledged: "#d97706", Dispatched: "#2563eb",
+  Rescued: "#15803d", Cancelled: "#6b7280"
+};
+// Buttons shown on each card (the next sensible actions)
+// ("Dispatched" is set by assigning a team, below)
+const NEXT = {
+  Pending: ["Acknowledged"],
+  Acknowledged: ["Rescued"],
+  Dispatched: ["Rescued"],
+  Rescued: [],
+  Cancelled: []
+};
+
+let allSos = [];
+let teams = [];
+let assignments = {};   // sos_id -> assignment
+let prio = {};          // sos_id -> priority info (rank, score, level, reasons)
+let floodNote = "";
+const PRIO_COLORS = { Critical: "#b91c1c", High: "#ea580c", Medium: "#a16207", Low: "#4b5563" };
+let filter = "All";
+
+function etaText(a) {
+  const mins = Math.max(0, Math.round((Date.parse(a.eta_at) - Date.now()) / 60000));
+  return mins === 0 ? "arriving now" : "about " + mins + " min";
+}
+
+async function assign(sosId, teamId, etaMinutes) {
+  if (!etaMinutes || etaMinutes < 1) { alert("Enter the ETA in minutes (1 or more)."); return; }
+  try {
+    const res = await fetch("/sos/" + encodeURIComponent(sosId) + "/assign", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ team_id: teamId, eta_minutes: etaMinutes })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || res.status);
+    }
+    await load();
+  } catch (e) {
+    alert("Could not assign team: " + e.message);
+  }
+}
+
+// Team picker + ETA box shown on every open SOS card
+function assignBox(s) {
+  const a = assignments[s.sos_id];
+  const box = el("div", { className: "assign" });
+  box.onclick = ev => ev.stopPropagation();   // clicking here must not move the map
+  if (a) {
+    box.append(el("div", { className: "meta", textContent:
+      "Team: " + a.team_name + "  |  ETA: " + etaText(a) }));
+  }
+  if (!teams.length) {
+    box.append(el("div", { className: "meta", textContent:
+      "No rescue teams yet. Run seed.py or add one with POST /teams." }));
+    return box;
+  }
+  const sel = el("select");
+  teams.forEach(t => {
+    const o = el("option", { value: t.team_id,
+      textContent: t.name + " (" + t.active_assignments + " active)" });
+    if (a && a.team_id === t.team_id) o.selected = true;
+    sel.append(o);
+  });
+  const eta = el("input", { type: "number", min: 1, max: 1440,
+    value: a ? a.eta_minutes : 30, title: "ETA in minutes" });
+  const btn = el("button", { textContent: a ? "Update team / ETA" : "Assign team" });
+  btn.onclick = () => assign(s.sos_id, sel.value, parseInt(eta.value, 10));
+  box.append(sel, eta, el("span", { className: "meta", textContent: "min" }), btn);
+  return box;
+}
+let firstLoad = true;
+const markers = {};
+
+const map = L.map("map").setView([21.3, 86.9], 7);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 18, attribution: "&copy; OpenStreetMap contributors"
+}).addTo(map);
+
+function el(tag, props, children) {
+  const e = document.createElement(tag);
+  Object.assign(e, props || {});
+  (children || []).forEach(c => e.append(c));
+  return e;
+}
+
+function renderCounts() {
+  const box = document.getElementById("counts");
+  box.replaceChildren();
+  STATUSES.forEach(s => {
+    const n = allSos.filter(x => x.status === s).length;
+    const c = el("span", { className: "count", textContent: s + ": " + n });
+    c.style.background = COLORS[s];
+    box.append(c);
+  });
+}
+
+function renderFilters() {
+  const box = document.getElementById("filters");
+  box.replaceChildren();
+  ["All", ...STATUSES].forEach(f => {
+    const b = el("button", { textContent: f });
+    if (f === filter) b.className = "active";
+    b.onclick = () => { filter = f; render(); };
+    box.append(b);
+  });
+}
+
+async function setStatus(sosId, status) {
+  try {
+    const res = await fetch("/sos/" + encodeURIComponent(sosId) + "/status", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status })
+    });
+    if (!res.ok) throw new Error(res.status);
+    await load();
+  } catch (e) {
+    alert("Could not update status. Is the server running?");
+  }
+}
+
+function renderCards() {
+  const box = document.getElementById("cards");
+  box.replaceChildren();
+  const shown = allSos.filter(s => filter === "All" || s.status === filter);
+  // Most urgent first; closed SOS (no priority) go to the bottom
+  shown.sort((a, b) => {
+    const pa = prio[a.sos_id], pb = prio[b.sos_id];
+    if (pa && pb) return pa.rank - pb.rank;
+    if (pa) return -1;
+    if (pb) return 1;
+    return 0;
+  });
+  if (!shown.length) {
+    box.append(el("div", { className: "empty", textContent: "No SOS requests." }));
+    return;
+  }
+  shown.forEach(s => {
+    const badge = el("span", { className: "badge", textContent: s.status });
+    badge.style.background = COLORS[s.status] || "#6b7280";
+    const card = el("div", { className: "card" }, [
+      el("h3", {}, [el("span", { textContent: s.sos_id }), badge]),
+      el("div", { className: "meta", textContent:
+        "User: " + s.user_id + "  |  " + s.emergency_type + "\n" +
+        s.latitude.toFixed(4) + ", " + s.longitude.toFixed(4) + "\n" +
+        "Location time: " + s.location_timestamp.replace("T", " ").slice(0, 16)
+      })
+    ]);
+    card.style.borderLeftColor = COLORS[s.status] || "#6b7280";
+    card.querySelector(".meta").style.whiteSpace = "pre-line";
+
+    const pr = prio[s.sos_id];
+    if (pr) {
+      const tag = el("div", { className: "prio", textContent:
+        "#" + pr.rank + "  " + pr.level.toUpperCase() + "  (score " + pr.score + "/100)\n" +
+        pr.reasons.join("  ·  ") });
+      tag.style.color = PRIO_COLORS[pr.level] || "#4b5563";
+      tag.style.whiteSpace = "pre-line";
+      card.querySelector(".meta").after(tag);
+    }
+
+    const actions = el("div", { className: "actions" });
+    (NEXT[s.status] || []).forEach(next => {
+      const b = el("button", { textContent: "Mark " + next });
+      b.style.background = COLORS[next];
+      b.onclick = ev => { ev.stopPropagation(); setStatus(s.sos_id, next); };
+      actions.append(b);
+    });
+    if (actions.children.length) card.append(actions);
+    if (["Pending", "Acknowledged", "Dispatched"].includes(s.status)) card.append(assignBox(s));
+
+    card.onclick = () => map.flyTo([s.latitude, s.longitude], 12);
+    box.append(card);
+  });
+}
+
+function renderMap() {
+  Object.values(markers).forEach(m => map.removeLayer(m));
+  Object.keys(markers).forEach(k => delete markers[k]);
+  const points = [];
+  allSos.filter(s => filter === "All" || s.status === filter).forEach(s => {
+    const m = L.circleMarker([s.latitude, s.longitude], {
+      radius: 9, color: "#fff", weight: 2,
+      fillColor: COLORS[s.status] || "#6b7280", fillOpacity: 0.95
+    }).addTo(map);
+    m.bindPopup(s.sos_id + " (" + s.user_id + ")<br>" + s.status);
+    markers[s.sos_id] = m;
+    points.push([s.latitude, s.longitude]);
+  });
+  if (firstLoad && points.length) {
+    map.fitBounds(points, { padding: [40, 40], maxZoom: 11 });
+    firstLoad = false;
+  }
+}
+
+function render() {
+  renderCounts();
+  renderFilters();
+  renderCards();
+  renderMap();
+}
+
+async function load() {
+  const status = document.getElementById("status");
+  try {
+    const [r1, r2, r3, r4] = await Promise.all([
+      fetch("/sos"), fetch("/teams"), fetch("/assignments"), fetch("/priority")
+    ]);
+    if (!r1.ok) throw new Error(r1.status);
+    allSos = await r1.json();
+    teams = r2.ok ? await r2.json() : [];
+    assignments = {};
+    (r3.ok ? await r3.json() : []).forEach(a => { assignments[a.sos_id] = a; });
+    prio = {};
+    if (r4.ok) {
+      const pj = await r4.json();
+      pj.ranking.forEach(r => { prio[r.sos_id] = r; });
+      floodNote = pj.flood_layer.note;
+    }
+    // Don't redraw while someone is typing in an assign box (it would wipe what they typed)
+    const ae = document.activeElement;
+    if (!(ae && ae.closest && ae.closest(".assign"))) render();
+    status.textContent = "Updated " + new Date().toLocaleTimeString() +
+      (floodNote ? "  |  Flood layer: " + floodNote : "");
+  } catch (e) {
+    status.textContent = "Server not reachable";
+  }
+}
+
+load();
+setInterval(load, 5000);  // auto-refresh every 5 seconds
+</script>
+</body>
+</html>
