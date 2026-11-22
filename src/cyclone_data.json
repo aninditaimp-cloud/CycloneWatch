@@ -1,0 +1,73 @@
+{
+  "scenario_id": "cyclone-yaas-2021",
+  "data_mode": "bhuvan_historical_reference",
+  "is_live_active_cyclone": false,
+  "hazard_type": "cyclone",
+  "cyclone_name": "Cyclone Yaas",
+  "region": "Balasore & Bhadrak Coastal Belt (near Dhamra/Bahanaga), Odisha",
+  "coordinates": {
+    "lat": 21.345,
+    "lon": 86.912
+  },
+  "severity": "Very Severe Cyclonic Storm",
+  "zone": "Highly Dangerous",
+  "impact_buffer": "High Impact Zone - 5km Buffer",
+  "alert_level": "RED_ALERT",
+  "wind_speed_kmph": "130-140 km/h (gusting up to 155 km/h)",
+  "lead_time_hours": 12,
+  "trigger_checkin": true,
+  "checkin_timeout_seconds": 30,
+  "alert_summary": "Very Severe Cyclonic Storm Yaas (IMD track 25-26 May 2021) approaching northern Odisha coast near Balasore/Dhamra with 130-140 km/h winds, heavy rainfall, and storm surge inside the Bhuvan 5km High Impact Buffer.",
+  "recommended_action": "Evacuate low-lying coastal settlements within the 5km High Impact Buffer immediately, secure shelter, and complete your safety check-in.",
+  "buffer_zones": {
+    "high_impact_km": 5,
+    "moderate_impact_km": 15,
+    "low_impact_km": 25
+  },
+  "precautions": [
+    {
+      "id": "p1",
+      "category": "Evacuation & Shelter",
+      "text": "Leave low-lying coastal villages inside the 5km High Impact Buffer and move to a designated cyclone shelter."
+    },
+    {
+      "id": "p2",
+      "category": "Home & Utilities",
+      "text": "Turn off main electricity and gas connections before surge/flooding enters and stay away from glass windows."
+    },
+    {
+      "id": "p3",
+      "category": "Emergency Kit",
+      "text": "Pack drinking water, dry rations, torch, power bank, essential medicines, and waterproofed ID documents."
+    },
+    {
+      "id": "p4",
+      "category": "Communication & SOS",
+      "text": "Keep battery conserved and respond to safety check-ins promptly; unacknowledged alerts escalate to family and rescue teams."
+    }
+  ],
+  "map_reference": {
+    "portal_primary": "NRSC Bhuvan Disaster Services — Cyclone Yaas",
+    "portal_secondary": "ISRO MOSDAC Live (INSAT-3DS/3DR IMAGER TIR1)",
+    "track_layer": "Cyclone Track (25/05/2021) — Source: IMD",
+    "imagery_layers": [
+      "Pre (03Feb2021) and Post (27May2021) Cyclone Satellite Imagery",
+      "Animation of Rain Affected Areas in parts of Odisha"
+    ],
+    "focus_zoom": 9,
+    "risk_radius_km": 5
+  },
+  "sources": [
+    {
+      "name": "NRSC Bhuvan Disaster Services (Cyclone Yaas)",
+      "url": "https://bhuvan-app1.nrsc.gov.in/disaster/disaster.php?id=cyclone",
+      "note": "Cyclone Track (25/05/2021, Source: IMD), High Impact Zone (5km Buffer), Moderate (15km), Low (25km), and Pre/Post satellite imagery."
+    },
+    {
+      "name": "ISRO MOSDAC Live",
+      "url": "https://mosdac.gov.in/live/",
+      "note": "Checked real-time INSAT-3DS/3DR TIR1 satellite feed and active cyclone status; selected Bhuvan Cyclone Yaas archive for deterministic demo."
+    }
+  ],
+  "updated_at": "2026-11-21T23:09:00+05:30"
+}

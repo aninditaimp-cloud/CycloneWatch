@@ -1,0 +1,11 @@
+{
+    "crs": "EPSG:4326",
+    "min_longitude": 86.21901154396235,
+    "min_latitude": 19.90186104615508,
+    "max_longitude": 87.39701439338424,
+    "max_latitude": 22.310623367375058,
+    "grid_columns": 4,
+    "grid_rows": 6,
+    "tile_width": 0.2945007123554717,
+    "tile_height": 0.40146038686999636
+}

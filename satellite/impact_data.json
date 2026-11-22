@@ -1,0 +1,32 @@
+
+{
+    "event_name": "Cyclone Yaas",
+    "region": "Odisha, India",
+    "event_date": "2021-05-29",
+    "reference_time": null,
+    "data_source": "Sentinel Asia",
+    "source_url": "https://sentinel-asia.org/",
+    "reference_layer": "20210529_Detected_Flood_Water_in_India",
+    "layer_type": "Satellite-detected flood water",
+    "data_status": "processed",
+    "observation_date": "2021-05-29",
+    "source_file": "20210529_Detected_Flood_Water_in_India.shp",
+    "crs": "EPSG:4326",
+    "feature_count_original": 63619,
+    "tile_count": 18,
+    "description": "Satellite-derived flood-water polygons for the Odisha region, based on the Sentinel Asia dataset dated 29 May 2021. The data has been repaired, converted to GeoJSON, and divided into spatial tiles for location-based impact assessment.",
+    "limitations": [
+        "This is historical satellite data, not live flood monitoring.",
+        "Mapped flood-water boundaries do not represent every affected location.",
+        "A location outside mapped polygons must not be interpreted as safe.",
+        "The dataset observation date is 29 May 2021; it should not be confused with the separate Bhuvan reference layer dated 27 May 2021.",
+        "Impact assessment is prototype decision support and does not confirm rescue priority or actual danger."
+    ],
+    "additional_reference": {
+        "name": "ISRO Bhuvan Historical Flood Layer",
+        "date": "2021-05-27",
+        "reference_time": "06:00",
+        "url": "https://bhuvan-app1.nrsc.gov.in/disaster/disaster.php?id=flood",
+        "status": "Separate reference layer; not the source of the imported GeoJSON polygons."
+    }
+}
